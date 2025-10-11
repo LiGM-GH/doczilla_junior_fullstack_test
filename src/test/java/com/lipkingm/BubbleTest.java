@@ -36,7 +36,7 @@ public class BubbleTest
 
     Tuple2[] output = {};
 
-    assertBubbles(input, output);
+    assertBubbles(1, input, output);
   }
 
   public void testBubblesSecond() {
@@ -49,52 +49,50 @@ public class BubbleTest
         new Tuple2(0, 1)
     };
 
-    assertBubbles(input, output);
+    assertBubbles(2, input, output);
   }
 
   public void testBottlePairs() {
     assertBottlePair(
+        2,
         new ArrayList<>(
             Arrays.asList(
                 new ArrayList<>(Arrays.asList(1, 2)),
                 new ArrayList<>())),
-        new Integer[] { 0, 1 });
+        new BottlePair(0, 1));
   }
 
-  static void assertBottlePair(ArrayList<ArrayList<Integer>> input, Integer[] output) {
-    Integer[] real_output = Bubbles.findBottlePair(input).toArray(new Integer[0]);
+  static void assertBottlePair(int volume, ArrayList<ArrayList<Integer>> input, BottlePair output) {
+    BottlePair real_output = Bubbles.findBottlePair(input, volume);
 
-    assert Arrays.equals(real_output, output)
-        : "Couldn't find a bottle pair: expected " + Arrays.toString(output)
-            + "; found " + Arrays.toString(real_output);
+    assert real_output.equals(output)
+        : "Couldn't find a bottle pair: expected " + output
+            + "; found " + real_output;
   }
 
-  // public void testBubbles() {
-  // int[][] input = {
-  // { 1, 1, 2, 2 },
-  // { 1, 3, 3, 3 },
-  // { 2, 2, 2, 1 },
-  // {},
-  // {}
-  // };
-  // Tuple2[] output = {
-  // new Tuple2(0, 3),
-  // new Tuple2(1, 3),
-  // new Tuple2(2, 1),
-  // new Tuple2(2, 0),
-  // new Tuple2(3, 2)
-  // };
-  // assertBubbles(input, output);
-  // }
+  public void testBubbles() {
+    int[][] input = {
+        { 2, 2, 1, 1 },
+        { 3, 3, 3, 1 },
+        { 1, 3, 2, 2 },
+        {},
+        {}
+    };
+    assertBubblesOk(input, 4);
+  }
 
-  void assertBubbles(int[][] input, Tuple2[] output) {
-    Tuple2[] real_output = Bubbles.bubble(input, 4);
+  void assertBubbles(int volume, int[][] input, Tuple2[] output) {
+    Tuple2[] real_output = Bubbles.bubble(input, volume);
 
     assert Arrays.deepEquals(real_output, output)
         : "Bubbles.bubble(" +
             printMatrix(input)
             + ") expected to result in " + printTarray(output)
             + " but resulted in " + printTarray(real_output);
+  }
+
+  void assertBubblesOk(int[][] input, int volume) {
+    assert Bubbles.bubble(input, volume) != null;
   }
 
   String printMatrix(int[][] input) {

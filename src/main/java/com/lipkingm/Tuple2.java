@@ -26,5 +26,10 @@ public class Tuple2 {
   public int hashCode() {
     return Objects.hash(this.field1, this.field2);
   }
+
+  @Override
+  public String toString() {
+    return "Tuple2(" + this.field1 + ", " + this.field2 + ")";
+  }
 }
 
