@@ -1,0 +1,57 @@
+:root {
+  --color-background: light-dark(#e6e6cc, #4d331a);
+  --color-foreground: light-dark(#333333, #b3b3b3);
+  --color-heading-sad: light-dark(#cc0000, #660000);
+  --color-heading-happy: light-dark(#00e600, #004d00);
+}
+
+html {
+  box-sizing: border-box;
+  color-scheme: light dark;
+  width: 100%;
+  height: 100%;
+}
+
+html:has(#mode-switcher #light:checked) {
+  color-scheme: light;
+}
+
+html:has(#mode-switcher #dark:checked) {
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sad-heading {
+  background-color: var(--color-heading-sad);
+}
+
+.happy-heading {
+  background-color: var(--color-heading-happy);
+}
+
+.container {
+  display: grid;
+  grid-template-rows: 1fr 20fr 1fr;
+  width: 100%;
+  height: 100%;
+}
+
+.fileserv-form {
+  margin: auto auto auto auto;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
