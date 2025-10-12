@@ -1,4 +1,5 @@
 var form = null;
+var prevHeading = null;
 
 window.onload = function() {
   registerForm();
@@ -19,10 +20,10 @@ function registerForm() {
 
       const result = await requestUpload();
 
-      if (result != true) {
+      if (result == null) {
         decorateSad();
       } else {
-        decorateHappy();
+        decorateHappy(result);
       }
     })();
   });
@@ -33,7 +34,7 @@ async function requestUpload() {
 
   if (fileinput == null || !(fileinput instanceof HTMLInputElement)) {
     console.log("Couldn't find fileinput");
-    return;
+    return null;
   }
 
   const formData = new FormData();
@@ -41,6 +42,7 @@ async function requestUpload() {
   formData.append("file", fileinput.files[0]);
 
   var result = null;
+
   try {
     result = await fetch("/fileserv", {
       method: "POST",
@@ -59,20 +61,24 @@ async function requestUpload() {
     return null;
   }
 
-  return true;
+  const text = await result.text();
+  return text;
 }
 
-function decorateHappy() {
+function decorateHappy(result) {
   const heading = document.getElementById("heading");
-  heading.className = "happy-heading"
+  prevHeading = heading.innerText;
+  heading.innerText = window.location.href + "/" + result;
+  heading.className = "happy-heading";
 }
 
 function decorateSad() {
   const heading = document.getElementById("heading");
-  heading.className = "sad-heading"
+  heading.className = "sad-heading";
 }
 
 function decorateUnsure() {
   const heading = document.getElementById("heading");
-  heading.className = "sad-heading"
+  heading.innerText = prevHeading;
+  heading.className = "sad-heading";
 }

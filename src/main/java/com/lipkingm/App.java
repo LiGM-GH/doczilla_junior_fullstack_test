@@ -22,7 +22,7 @@ public class App {
     public static void main(String[] args) {
         try {
             System.out.println("Creating server");
-            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 5151), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", 5151), 0);
             System.out.println("Created server");
             server.createContext("/fileserv", exchange -> {
                 handleFileserv(exchange);
@@ -62,6 +62,7 @@ public class App {
         try (FileInputStream fs = new FileInputStream(file)) {
             byte[] buffer = new byte[500];
             int count;
+
             while ((count = fs.read(buffer)) != -1) {
                 body_stream.write(buffer, 0, count);
             }
