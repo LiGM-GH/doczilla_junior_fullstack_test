@@ -1,8 +1,10 @@
 :root {
   --color-background: light-dark(#e6e6cc, #4d331a);
+  --color-background-finput: light-dark(#b3b3b3, #b3b333);
   --color-foreground: light-dark(#333333, #b3b3b3);
   --color-heading-sad: light-dark(#cc0000, #660000);
   --color-heading-happy: light-dark(#00e600, #004d00);
+  --color-heading-unsure: light-dark(#808080, #333333);
 }
 
 html {
@@ -35,6 +37,10 @@ body {
   height: 100%;
 }
 
+.unsure-heading {
+  background-color: var(--color-heading-unsure);
+}
+
 .sad-heading {
   background-color: var(--color-heading-sad);
 }
@@ -54,4 +60,10 @@ body {
   margin: auto auto auto auto;
   display: grid;
   grid-template-rows: auto auto 1fr;
+}
+
+.file-input {
+  padding: 30vh 30vw;
+  background-color: var(--color-background-finput);
+  border-radius: 20px;
 }

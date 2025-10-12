@@ -2,11 +2,14 @@ package com.lipkingm;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -21,7 +24,7 @@ public class App {
             System.out.println("Creating server");
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 5151), 0);
             System.out.println("Created server");
-            server.createContext("/fileserv/", exchange -> {
+            server.createContext("/fileserv", exchange -> {
                 handleFileserv(exchange);
             });
 
@@ -33,10 +36,6 @@ public class App {
                 handleCss(exchange);
             });
 
-            server.createContext("/upload", exchange -> {
-                handleUpload(exchange);
-            });
-
             System.out.println("Created context");
             server.setExecutor(null);
             server.start();
@@ -45,16 +44,20 @@ public class App {
         }
     }
 
-    static void handleUpload(HttpExchange exchange) throws IOException {
-        System.out.println("Got upload access");
+    static void preventCors(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+
+        if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, OPTIONS");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type,Authorization");
+            exchange.sendResponseHeaders(204, -1);
+        }
     }
 
-    static void handleJS(HttpExchange exchange) throws IOException {
-        System.out.println("Got JS access");
-        exchange.sendResponseHeaders(200, 0);
-        OutputStream body_stream = exchange.getResponseBody();
-        File file = new File("./main.js").getAbsoluteFile();
-        System.out.println("The absolute path for the main.js is " + file.toString());
+    static void serveFile(OutputStream body_stream, String filename) throws IOException {
+        File file = new File(filename).getAbsoluteFile();
+
+        System.out.println("The absolute path for the " + filename + " is " + file.toString());
 
         try (FileInputStream fs = new FileInputStream(file)) {
             byte[] buffer = new byte[500];
@@ -63,6 +66,14 @@ public class App {
                 body_stream.write(buffer, 0, count);
             }
         }
+    }
+
+    static void handleJS(HttpExchange exchange) throws IOException {
+        System.out.println("Got JS access");
+        exchange.sendResponseHeaders(200, 0);
+        OutputStream body_stream = exchange.getResponseBody();
+
+        serveFile(body_stream, "main.js");
 
         body_stream.close();
     }
@@ -72,25 +83,17 @@ public class App {
         exchange.sendResponseHeaders(200, 0);
         OutputStream body_stream = exchange.getResponseBody();
 
-        System.out.println("Relative was equal");
-        File file = new File("./style.css").getAbsoluteFile();
-        System.out.println("The absolute path for the style.css is " + file.toString());
-
-        try (FileInputStream fs = new FileInputStream(file)) {
-            byte[] buffer = new byte[500];
-            int count;
-            while ((count = fs.read(buffer)) != -1) {
-                body_stream.write(buffer, 0, count);
-            }
-        }
+        serveFile(body_stream, "style.css");
 
         body_stream.close();
     }
 
     static void handleFileserv(HttpExchange exchange) throws IOException {
+        preventCors(exchange);
+
         System.out.println("Entered HttpHandler");
-        URI uri = exchange.getRequestURI();
         String method = exchange.getRequestMethod();
+        URI uri = exchange.getRequestURI();
 
         String response = "This is the response";
 
@@ -101,26 +104,27 @@ public class App {
 
             String relative = null;
             try {
-                relative = (new URI("/fileserv/")).relativize(uri).toString();
+                relative = (new URI("/fileserv")).relativize(uri).toString();
             } catch (URISyntaxException e) {
+                throw new IOException(e.getMessage());
             }
 
             System.out.println("Relative is '" + relative + "'");
-            if (relative.equals("")) {
-                exchange.sendResponseHeaders(200, 0);
-                OutputStream body_stream = exchange.getResponseBody();
 
-                System.out.println("Relative was equal");
-                File file = new File("./main.html").getAbsoluteFile();
-                System.out.println("The absolute path for the main.html is " + file.toString());
-                try (FileInputStream fs = new FileInputStream(file)) {
-                    byte[] buffer = new byte[500];
-                    int count;
-                    while ((count = fs.read(buffer)) != -1) {
-                        body_stream.write(buffer, 0, count);
-                    }
-                }
-                body_stream.close();
+            if (relative.equals("")) {
+                handleFileservMainPage(exchange);
+                return;
+            }
+
+            if (relative.chars().allMatch(value -> ('0' <= value && value <= '9') || ('a' <= value && value <= 'f'))) {
+                handleFileservGetPage(exchange, relative);
+                return;
+            }
+
+            if (relative.equals("?")) {
+                System.out.println("Exchange is POST-like GET");
+                handleFileservUploadedPage(exchange);
+                return;
             }
 
             exchange.sendResponseHeaders(200, response.length());
@@ -129,5 +133,64 @@ public class App {
             body_stream.write(response.getBytes());
             body_stream.close();
         }
+
+        if (method.equals("POST")) {
+            System.out.println("Exchange is POST");
+            handleFileservUploadedPage(exchange);
+        }
+    }
+
+    static void handleFileservMainPage(HttpExchange exchange) throws IOException {
+        exchange.sendResponseHeaders(200, 0);
+
+        try (OutputStream body_stream = exchange.getResponseBody()) {
+            serveFile(body_stream, "main.html");
+        }
+
+        exchange.close();
+    }
+
+    static void handleFileservGetPage(HttpExchange exchange, String file_hash) throws IOException {
+        exchange.sendResponseHeaders(200, 0);
+
+        try (OutputStream body_stream = exchange.getResponseBody()) {
+        }
+
+        exchange.close();
+    }
+
+    static void handleFileservUploadedPage(HttpExchange exchange) throws IOException {
+        exchange.sendResponseHeaders(200, 0);
+
+        byte[] body = new byte[500];
+        InputStream req = exchange.getRequestBody();
+
+        File tempfile = File.createTempFile("temp_", ".temp").getAbsoluteFile();
+
+        System.out.println("Created tempfile " + tempfile.toString());
+
+        try (FileOutputStream out_stream = new FileOutputStream(tempfile)) {
+            while (req.read(body) != -1) {
+                out_stream.write(body);
+            }
+        }
+
+        System.out.println("Written tempfile");
+
+        File new_tempfile = new File("userfiles/" + tempfile.toPath().getFileName().toString());
+
+        System.out.println("Trying to move tempfile to " + new_tempfile.getAbsoluteFile().toString());
+
+        Files.move(tempfile.toPath(), new_tempfile.toPath());
+
+        System.out.println("Moved tempfile");
+
+        try (OutputStream body_stream = exchange.getResponseBody()) {
+            body_stream.write(new_tempfile.toPath().getFileName().toString().getBytes());
+        }
+
+        System.out.println("Ended returning name of tempfile");
+
+        exchange.close();
     }
 }

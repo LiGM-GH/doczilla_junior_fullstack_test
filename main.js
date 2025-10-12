@@ -1,10 +1,8 @@
-const reader = new FileReader();
+var form = null;
 
-const form = null;
-
-document.onload = function() {
+window.onload = function() {
   registerForm();
-}
+};
 
 function registerForm() {
   form = document.getElementById("form");
@@ -17,31 +15,45 @@ function registerForm() {
     event.preventDefault();
 
     (async () => {
-      const result = await requestUpload(formData)
+      decorateUnsure();
+
+      const result = await requestUpload();
 
       if (result != true) {
-        decorateHappy();
-      } else {
         decorateSad();
+      } else {
+        decorateHappy();
       }
     })();
   });
 }
 
-function upload(input) {
-  if (input.files && input.files[0]) {
-    reader.readAsDataURL(input.files[0]);
+async function requestUpload() {
+  const fileinput = document.getElementById("file-input");
+
+  if (fileinput == null || !(fileinput instanceof HTMLInputElement)) {
+    console.log("Couldn't find fileinput");
+    return;
   }
-}
 
-async function requestUpload(formData) {
   const formData = new FormData();
-  formData.append("file", reader.result);
 
-  const result = await fetch("/upload", {
-    method: "GET",
-    body: formData,
-  });
+  formData.append("file", fileinput.files[0]);
+
+  var result = null;
+  try {
+    result = await fetch("/fileserv", {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    console.log("ERROR HAPPENED: " + error.message);
+    return null;
+  }
+
+  if (result == null) {
+    return null;
+  }
 
   if (!result.ok) {
     return null;
@@ -56,6 +68,11 @@ function decorateHappy() {
 }
 
 function decorateSad() {
+  const heading = document.getElementById("heading");
+  heading.className = "sad-heading"
+}
+
+function decorateUnsure() {
   const heading = document.getElementById("heading");
   heading.className = "sad-heading"
 }
