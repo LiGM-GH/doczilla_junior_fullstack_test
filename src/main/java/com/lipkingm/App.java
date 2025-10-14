@@ -36,12 +36,30 @@ public class App {
                 handleCss(exchange);
             });
 
+            server.createContext("/weather", exchange -> {
+                handleWeather(exchange);
+            });
+
             System.out.println("Created context");
             server.setExecutor(null);
             server.start();
         } catch (IOException error) {
             System.out.println("Server internal error");
         }
+    }
+
+    static void handleWeather(HttpExchange exchange) throws IOException {
+        System.out.println("Got Weather access");
+
+        preventCors(exchange);
+
+        URI uri = exchange.getRequestURI();
+        System.out.println("Got URI of " + uri.toString());
+        String[] values = uri.toString().split("\\?");
+        System.out.println("Values are " + values[0]);
+        String citypart = values[1];
+        String city = citypart.replaceFirst("^city=", "");
+        System.out.println("City is " + city);
     }
 
     static void preventCors(HttpExchange exchange) throws IOException {
