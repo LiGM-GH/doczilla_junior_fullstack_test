@@ -6,13 +6,23 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.concurrent.TimeUnit;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+
+import redis.clients.jedis.JedisPooled;
+import redis.clients.jedis.exceptions.JedisException;
 
 /**
  * Hello world!
@@ -22,7 +32,7 @@ public class App {
     public static void main(String[] args) {
         try {
             System.out.println("Creating server");
-            HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", 5151), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 5151), 0);
             System.out.println("Created server");
             server.createContext("/fileserv", exchange -> {
                 handleFileserv(exchange);
@@ -36,30 +46,112 @@ public class App {
                 handleCss(exchange);
             });
 
+            JedisPooled jedis = new JedisPooled("0.0.0.0", 6379);
             server.createContext("/weather", exchange -> {
-                handleWeather(exchange);
+                handleWeather(exchange, jedis);
             });
 
-            System.out.println("Created context");
+            System.out.println("Created contexts");
+
             server.setExecutor(null);
             server.start();
         } catch (IOException error) {
-            System.out.println("Server internal error");
+            System.out.println("Server internal error:" + error);
         }
     }
 
-    static void handleWeather(HttpExchange exchange) throws IOException {
+    static void handleWeather(HttpExchange exchange, JedisPooled jedis) throws IOException {
         System.out.println("Got Weather access");
-
-        preventCors(exchange);
 
         URI uri = exchange.getRequestURI();
         System.out.println("Got URI of " + uri.toString());
-        String[] values = uri.toString().split("\\?");
-        System.out.println("Values are " + values[0]);
-        String citypart = values[1];
-        String city = citypart.replaceFirst("^city=", "");
+        String[] params = uri.getQuery().split("&");
+        String city = null;
+        for (String part : params) {
+            String[] part_parts = part.split("=");
+            if (part_parts[0].equals("city")) {
+                city = part_parts[1];
+            }
+        }
         System.out.println("City is " + city);
+
+        DateFormat format = new SimpleDateFormat("yyyy-MM-DD HH:mm:ss");
+        Date now = new Date(System.currentTimeMillis());
+
+        boolean latest = false;
+
+        String result = "Couldn't give you the reply";
+
+        System.out.println("Got the latest flag: " + latest);
+
+        String jedi = null;
+        Date then = null;
+
+        try {
+            jedi = jedis.get("update-time-" + city);
+            then = format.parse(jedi);
+
+            System.out.println("JEDI COMPLETE");
+
+            latest = TimeUnit.MINUTES.toMinutes(now.getTime()) - TimeUnit.MINUTES.toMinutes(then.getTime()) > 15;
+        } catch (JedisException e) {
+            StringWriter str = new StringWriter();
+            PrintWriter writer = new PrintWriter(str);
+            e.printStackTrace(writer);
+
+            System.out.println(
+                    "\033[31mJedi order has objections: " + str.toString() + "\033[0m");
+        } catch (ParseException e) {
+            StringWriter str = new StringWriter();
+            PrintWriter writer = new PrintWriter(str);
+            e.printStackTrace(writer);
+
+            System.out.println(
+                    "\033[31mParsing failed: " + str.toString() + "\033[0m");
+        } catch (Exception e) {
+            StringWriter str = new StringWriter();
+            PrintWriter writer = new PrintWriter(str);
+            e.printStackTrace(writer);
+
+            System.out.println(
+                    "\033[31mBoxwood failed: " + str.toString() + "\033[0m");
+        }
+
+        System.out.println("Got the latest flag: " + latest);
+
+        if (latest) {
+            System.out.println("Could find " + city + " in redis. Proceeding with cached reply");
+            result = jedis.get(city);
+        } else {
+            System.out.println("Couldn't find " + city + " in redis. Proceeding with new reply");
+            result = getGeoInfo();
+            try {
+                jedis.set(city, result);
+                jedis.set("update-time-" + city, format.format(new Date(System.currentTimeMillis())));
+            } catch (Exception e) {
+                StringWriter str = new StringWriter();
+                PrintWriter writer = new PrintWriter(str);
+                e.printStackTrace(writer);
+
+                System.out.println(
+                        "\033[31mJedi order has objections: " + str.toString() + "\033[0m");
+            }
+        }
+
+        System.out.println("Writing headers");
+        exchange.sendResponseHeaders(200, result.getBytes().length);
+        System.out.println("Writing body");
+        OutputStream body_stream = exchange.getResponseBody();
+        body_stream.write(result.getBytes());
+        body_stream.close();
+        System.out.println("Closed body");
+        exchange.close();
+        System.out.println("Closed request");
+    }
+
+    static String getGeoInfo() {
+        // "https://geocoding-api.open-meteo.com/v1/search?name={city}"
+        return "Geo info for City";
     }
 
     static void preventCors(HttpExchange exchange) throws IOException {
