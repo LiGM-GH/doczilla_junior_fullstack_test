@@ -1,10 +1,12 @@
 package com.lipkingm;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -15,9 +17,21 @@ import java.nio.file.Files;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.fluent.Content;
+import org.apache.http.client.fluent.Request;
+import org.apache.http.client.fluent.Response;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -54,6 +68,9 @@ public class App {
             System.out.println("Created contexts");
 
             server.setExecutor(null);
+
+            System.out.println("Created executor");
+
             server.start();
         } catch (IOException error) {
             System.out.println("Server internal error:" + error);
@@ -75,7 +92,7 @@ public class App {
         }
         System.out.println("City is " + city);
 
-        DateFormat format = new SimpleDateFormat("yyyy-MM-DD HH:mm:ss");
+        DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         Date now = new Date(System.currentTimeMillis());
 
         boolean latest = false;
@@ -93,28 +110,29 @@ public class App {
 
             System.out.println("JEDI COMPLETE");
 
-            latest = TimeUnit.MINUTES.toMinutes(now.getTime()) - TimeUnit.MINUTES.toMinutes(then.getTime()) > 15;
+            long now_minutes = now.getTime();
+            long then_minutes = then.getTime();
+
+            System.out.println("Now: " + now_minutes + " and then " + then_minutes);
+
+            long diff = (now_minutes - then_minutes)
+                    / 1000 // ms -> sec
+                    / 60 // sec -> min
+            ;
+
+            if (diff > 15) {
+                System.out.println("HOW?!");
+            }
+
+            latest = diff <= 15;
+
+            System.out.println("New latest flag is: " + latest);
         } catch (JedisException e) {
-            StringWriter str = new StringWriter();
-            PrintWriter writer = new PrintWriter(str);
-            e.printStackTrace(writer);
-
-            System.out.println(
-                    "\033[31mJedi order has objections: " + str.toString() + "\033[0m");
+            printError(e, "Jedi order has objections", "");
         } catch (ParseException e) {
-            StringWriter str = new StringWriter();
-            PrintWriter writer = new PrintWriter(str);
-            e.printStackTrace(writer);
-
-            System.out.println(
-                    "\033[31mParsing failed: " + str.toString() + "\033[0m");
+            printError(e, "Parsing failed", "");
         } catch (Exception e) {
-            StringWriter str = new StringWriter();
-            PrintWriter writer = new PrintWriter(str);
-            e.printStackTrace(writer);
-
-            System.out.println(
-                    "\033[31mBoxwood failed: " + str.toString() + "\033[0m");
+            printError(e, "Boxwood failed", "");
         }
 
         System.out.println("Got the latest flag: " + latest);
@@ -124,17 +142,22 @@ public class App {
             result = jedis.get(city);
         } else {
             System.out.println("Couldn't find " + city + " in redis. Proceeding with new reply");
-            result = getGeoInfo();
+            System.out.println("Trying to invoke GeoInfo");
+            // That's GeoInfo JSON
+            result = getGeoInfo(city);
+            JsonElement parser = JsonParser.parseString(result);
+            JsonObject obj = parser.getAsJsonObject().get("results").getAsJsonArray().get(0).getAsJsonObject();
+
+            String lat = obj.get("latitude").getAsString();
+            String lon = obj.get("longitude").getAsString();
+
+            result = getWeatherInfo(lat, lon);
+
             try {
                 jedis.set(city, result);
                 jedis.set("update-time-" + city, format.format(new Date(System.currentTimeMillis())));
             } catch (Exception e) {
-                StringWriter str = new StringWriter();
-                PrintWriter writer = new PrintWriter(str);
-                e.printStackTrace(writer);
-
-                System.out.println(
-                        "\033[31mJedi order has objections: " + str.toString() + "\033[0m");
+                printError(e, "Jedi order has objections", "");
             }
         }
 
@@ -149,9 +172,48 @@ public class App {
         System.out.println("Closed request");
     }
 
-    static String getGeoInfo() {
-        // "https://geocoding-api.open-meteo.com/v1/search?name={city}"
-        return "Geo info for City";
+    static String getWeatherInfo(String lat, String lon) throws IOException {
+        System.out.println("Invoked WeatherInfo");
+
+        Response resp = null;
+
+        try {
+            resp = Request
+                    .Get("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
+                            + "&hourly=temperature_2m")
+                    .connectTimeout(1000).socketTimeout(1000).execute();
+        } catch (ClientProtocolException e) {
+            printError(e, "Client couldn't protocol", "");
+        }
+
+        return resp.returnContent().asString();
+    }
+
+    static String getGeoInfo(String city) throws IOException {
+        System.out.println("Invoked GeoInfo");
+
+        Response resp = null;
+
+        try {
+            resp = Request.Get("https://geocoding-api.open-meteo.com/v1/search?name=" + city)
+                    .connectTimeout(1000).socketTimeout(1000).execute();
+        } catch (ClientProtocolException e) {
+            printError(e, "Client couldn't protocol", "");
+            throw new IOException(e);
+        }
+
+        Content content = resp.returnContent();
+
+        return content.asString();
+    }
+
+    static void printError(Exception e, String lhs, String rhs) {
+        StringWriter str = new StringWriter();
+        PrintWriter writer = new PrintWriter(str);
+        e.printStackTrace(writer);
+
+        System.out.println(
+                "\033[31m" + lhs + ":\n" + str.toString() + "\n\n" + rhs + "\033[0m");
     }
 
     static void preventCors(HttpExchange exchange) throws IOException {
