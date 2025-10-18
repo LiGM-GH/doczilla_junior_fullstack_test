@@ -86,13 +86,14 @@ body {
   overflow: auto;
   grid-template-columns: repeat(24, 1fr);
   margin: 20px 20px 20px 20px;
-  column-gap: 5%;
+  /* column-gap: 5px; */
 }
 
 .weather-bar {
   display: grid;
   grid-template-rows: 1fr 1fr auto;
   row-gap: 10px;
+  border-right: 1px black dotted;
 }
 
 .red-long-bar {
@@ -113,6 +114,11 @@ body {
   margin-bottom: auto;
   text-align: center;
   align-content: center;
+}
+
+.weather-label {
+  border-top: 1px black dotted;
+  text-align: center;
 }
 
 .fileserv-form {
