@@ -60,9 +60,13 @@ public class App {
                 handleCss(exchange);
             });
 
-            JedisPooled jedis = new JedisPooled("0.0.0.0", 6379);
             server.createContext("/weather", exchange -> {
-                handleWeather(exchange, jedis);
+                handleWeather(exchange);
+            });
+
+            JedisPooled jedis = new JedisPooled("0.0.0.0", 6379);
+            server.createContext("/js/weather.js", exchange -> {
+                handleWeatherJS(exchange, jedis);
             });
 
             System.out.println("Created contexts");
@@ -77,21 +81,35 @@ public class App {
         }
     }
 
-    static void handleWeather(HttpExchange exchange, JedisPooled jedis) throws IOException {
+    static void handleWeather(HttpExchange exchange) throws IOException {
         System.out.println("Got Weather access");
 
         URI uri = exchange.getRequestURI();
         System.out.println("Got URI of " + uri.toString());
         String[] params = uri.getQuery().split("&");
         String city = null;
+
         for (String part : params) {
             String[] part_parts = part.split("=");
             if (part_parts[0].equals("city")) {
                 city = part_parts[1];
             }
         }
+
         System.out.println("City is " + city);
 
+        System.out.println("Writing headers");
+        exchange.sendResponseHeaders(200, 0);
+        System.out.println("Writing body");
+        OutputStream body_stream = exchange.getResponseBody();
+        serveFile(body_stream, "weather.html");
+        body_stream.close();
+        System.out.println("Closed body");
+        exchange.close();
+        System.out.println("Closed request");
+    }
+
+    static String getWeatherResult(String city, JedisPooled jedis) throws IOException {
         DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         Date now = new Date(System.currentTimeMillis());
 
@@ -161,15 +179,7 @@ public class App {
             }
         }
 
-        System.out.println("Writing headers");
-        exchange.sendResponseHeaders(200, result.getBytes().length);
-        System.out.println("Writing body");
-        OutputStream body_stream = exchange.getResponseBody();
-        body_stream.write(result.getBytes());
-        body_stream.close();
-        System.out.println("Closed body");
-        exchange.close();
-        System.out.println("Closed request");
+        return result;
     }
 
     static String getWeatherInfo(String lat, String lon) throws IOException {
@@ -205,6 +215,48 @@ public class App {
         Content content = resp.returnContent();
 
         return content.asString();
+    }
+
+    static void handleWeatherJS(HttpExchange exchange, JedisPooled jedis) throws IOException {
+        System.out.println("Got WeatherJS access");
+
+        URI uri = exchange.getRequestURI();
+        System.out.println("Got URI of " + uri.toString());
+        String[] params = uri.getQuery().split("&");
+        String city = null;
+
+        for (String part : params) {
+            String[] part_parts = part.split("=");
+            if (part_parts[0].equals("city")) {
+                city = part_parts[1];
+            }
+        }
+
+        System.out.println("City is " + city);
+
+        String result = getWeatherResult(city, jedis);
+
+        exchange.sendResponseHeaders(200, 0);
+        InputStream js_stream = new FileInputStream("weather.js");
+        OutputStream js_temp = new FileOutputStream("weather-temp.js");
+        byte[] buf = new byte[500];
+        int count = 0;
+
+        while ((count = js_stream.read(buf)) != -1) {
+            js_temp.write(buf, 0, count);
+        }
+
+        js_stream.close();
+
+        buf = ("\nweather = " + result + "\ncall_last();").getBytes();
+
+        js_temp.write(buf);
+
+        js_temp.close();
+
+        OutputStream body_stream = exchange.getResponseBody();
+        serveFile(body_stream, "weather-temp.js");
+        body_stream.close();
     }
 
     static void printError(Exception e, String lhs, String rhs) {
