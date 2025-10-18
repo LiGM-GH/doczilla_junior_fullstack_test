@@ -4,3 +4,4 @@ target
 .classpath
 userfiles/temp_*
 keys
+weather-temp.js

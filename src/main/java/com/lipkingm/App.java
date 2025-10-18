@@ -1,18 +1,42 @@
 package com.lipkingm;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.fluent.Content;
+import org.apache.http.client.fluent.Request;
+import org.apache.http.client.fluent.Response;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+
+import redis.clients.jedis.JedisPooled;
+import redis.clients.jedis.exceptions.JedisException;
 
 /**
  * Hello world!
@@ -22,7 +46,7 @@ public class App {
     public static void main(String[] args) {
         try {
             System.out.println("Creating server");
-            HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", 5151), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 5151), 0);
             System.out.println("Created server");
             server.createContext("/fileserv", exchange -> {
                 handleFileserv(exchange);
@@ -40,26 +64,208 @@ public class App {
                 handleWeather(exchange);
             });
 
-            System.out.println("Created context");
+            JedisPooled jedis = new JedisPooled("0.0.0.0", 6379);
+            server.createContext("/js/weather.js", exchange -> {
+                handleWeatherJS(exchange, jedis);
+            });
+
+            System.out.println("Created contexts");
+
             server.setExecutor(null);
+
+            System.out.println("Created executor");
+
             server.start();
         } catch (IOException error) {
-            System.out.println("Server internal error");
+            System.out.println("Server internal error:" + error);
         }
     }
 
     static void handleWeather(HttpExchange exchange) throws IOException {
         System.out.println("Got Weather access");
 
-        preventCors(exchange);
+        URI uri = exchange.getRequestURI();
+        System.out.println("Got URI of " + uri.toString());
+        String[] params = uri.getQuery().split("&");
+        String city = null;
+
+        for (String part : params) {
+            String[] part_parts = part.split("=");
+            if (part_parts[0].equals("city")) {
+                city = part_parts[1];
+            }
+        }
+
+        System.out.println("City is " + city);
+
+        System.out.println("Writing headers");
+        exchange.sendResponseHeaders(200, 0);
+        System.out.println("Writing body");
+        OutputStream body_stream = exchange.getResponseBody();
+        serveFile(body_stream, "weather.html");
+        body_stream.close();
+        System.out.println("Closed body");
+        exchange.close();
+        System.out.println("Closed request");
+    }
+
+    static String getWeatherResult(String city, JedisPooled jedis) throws IOException {
+        DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        Date now = new Date(System.currentTimeMillis());
+
+        boolean latest = false;
+
+        String result = "Couldn't give you the reply";
+
+        System.out.println("Got the latest flag: " + latest);
+
+        String jedi = null;
+        Date then = null;
+
+        try {
+            jedi = jedis.get("update-time-" + city);
+            then = format.parse(jedi);
+
+            System.out.println("JEDI COMPLETE");
+
+            long now_minutes = now.getTime();
+            long then_minutes = then.getTime();
+
+            System.out.println("Now: " + now_minutes + " and then " + then_minutes);
+
+            long diff = (now_minutes - then_minutes)
+                    / 1000 // ms -> sec
+                    / 60 // sec -> min
+            ;
+
+            if (diff > 15) {
+                System.out.println("HOW?!");
+            }
+
+            latest = diff <= 15;
+
+            System.out.println("New latest flag is: " + latest);
+        } catch (JedisException e) {
+            printError(e, "Jedi order has objections", "");
+        } catch (ParseException e) {
+            printError(e, "Parsing failed", "");
+        } catch (Exception e) {
+            printError(e, "Boxwood failed", "");
+        }
+
+        System.out.println("Got the latest flag: " + latest);
+
+        if (latest) {
+            System.out.println("Could find " + city + " in redis. Proceeding with cached reply");
+            result = jedis.get(city);
+        } else {
+            System.out.println("Couldn't find " + city + " in redis. Proceeding with new reply");
+            System.out.println("Trying to invoke GeoInfo");
+            // That's GeoInfo JSON
+            result = getGeoInfo(city);
+            JsonElement parser = JsonParser.parseString(result);
+            JsonObject obj = parser.getAsJsonObject().get("results").getAsJsonArray().get(0).getAsJsonObject();
+
+            String lat = obj.get("latitude").getAsString();
+            String lon = obj.get("longitude").getAsString();
+
+            result = getWeatherInfo(lat, lon);
+
+            try {
+                jedis.set(city, result);
+                jedis.set("update-time-" + city, format.format(new Date(System.currentTimeMillis())));
+            } catch (Exception e) {
+                printError(e, "Jedi order has objections", "");
+            }
+        }
+
+        return result;
+    }
+
+    static String getWeatherInfo(String lat, String lon) throws IOException {
+        System.out.println("Invoked WeatherInfo");
+
+        Response resp = null;
+
+        try {
+            resp = Request
+                    .Get("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
+                            + "&hourly=temperature_2m")
+                    .connectTimeout(1000).socketTimeout(1000).execute();
+        } catch (ClientProtocolException e) {
+            printError(e, "Client couldn't protocol", "");
+        }
+
+        return resp.returnContent().asString();
+    }
+
+    static String getGeoInfo(String city) throws IOException {
+        System.out.println("Invoked GeoInfo");
+
+        Response resp = null;
+
+        try {
+            resp = Request.Get("https://geocoding-api.open-meteo.com/v1/search?name=" + city)
+                    .connectTimeout(1000).socketTimeout(1000).execute();
+        } catch (ClientProtocolException e) {
+            printError(e, "Client couldn't protocol", "");
+            throw new IOException(e);
+        }
+
+        Content content = resp.returnContent();
+
+        return content.asString();
+    }
+
+    static void handleWeatherJS(HttpExchange exchange, JedisPooled jedis) throws IOException {
+        System.out.println("Got WeatherJS access");
 
         URI uri = exchange.getRequestURI();
         System.out.println("Got URI of " + uri.toString());
-        String[] values = uri.toString().split("\\?");
-        System.out.println("Values are " + values[0]);
-        String citypart = values[1];
-        String city = citypart.replaceFirst("^city=", "");
+        String[] params = uri.getQuery().split("&");
+        String city = null;
+
+        for (String part : params) {
+            String[] part_parts = part.split("=");
+            if (part_parts[0].equals("city")) {
+                city = part_parts[1];
+            }
+        }
+
         System.out.println("City is " + city);
+
+        String result = getWeatherResult(city, jedis);
+
+        exchange.sendResponseHeaders(200, 0);
+        InputStream js_stream = new FileInputStream("weather.js");
+        OutputStream js_temp = new FileOutputStream("weather-temp.js");
+        byte[] buf = new byte[500];
+        int count = 0;
+
+        while ((count = js_stream.read(buf)) != -1) {
+            js_temp.write(buf, 0, count);
+        }
+
+        js_stream.close();
+
+        buf = ("\nweather = " + result + "\ncall_last();").getBytes();
+
+        js_temp.write(buf);
+
+        js_temp.close();
+
+        OutputStream body_stream = exchange.getResponseBody();
+        serveFile(body_stream, "weather-temp.js");
+        body_stream.close();
+    }
+
+    static void printError(Exception e, String lhs, String rhs) {
+        StringWriter str = new StringWriter();
+        PrintWriter writer = new PrintWriter(str);
+        e.printStackTrace(writer);
+
+        System.out.println(
+                "\033[31m" + lhs + ":\n" + str.toString() + "\n\n" + rhs + "\033[0m");
     }
 
     static void preventCors(HttpExchange exchange) throws IOException {
