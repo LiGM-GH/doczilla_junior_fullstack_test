@@ -1,5 +1,8 @@
 package com.lipkingm;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -42,7 +45,47 @@ class BottlePair {
 }
 
 public class Bubbles {
-  public static void main(String[] args) {
+  public static void main(String[] _args) throws IOException {
+    ArrayList<ArrayList<Integer>> args = new ArrayList<ArrayList<Integer>>();
+
+    InputStreamReader reader = new InputStreamReader(System.in);
+    BufferedReader stream = new BufferedReader(reader);
+    String vol = stream.readLine();
+    int volume = Integer.parseInt(vol);
+
+    stream.lines().forEach(line -> {
+      System.out.println("Line: " + line);
+      ArrayList<Integer> list = new ArrayList<Integer>();
+
+      for (String elem : line.split(" ")) {
+        Integer result = null;
+
+        try {
+          result = Integer.parseInt(elem);
+        } catch (NumberFormatException e) {
+        }
+
+        if (result == null) {
+          list.add(elem.charAt(0) - 'a');
+        } else {
+          list.add(result);
+        }
+      }
+
+      args.add(list);
+    });
+
+    int[][] val = new int[args.size()][];
+
+    for (int i = 0; i < args.size(); i++) {
+      val[i] = new int[args.get(i).size()];
+
+      for (int j = 0; j < args.get(i).size(); j++) {
+        val[i][j] = args.get(i).get(j);
+      }
+    }
+
+    bubble(val, volume);
   }
 
   public static Tuple2[] bubble(int[][] args, int volume) {
@@ -158,7 +201,8 @@ public class Bubbles {
       bottlepair_color = input.get(i).get(input.get(i).size() - 1);
     }
 
-    // Yet, if we didn't find non-single-color and also found a non-full-volume one, we can make him the donor
+    // Yet, if we didn't find non-single-color and also found a non-full-volume one,
+    // we can make him the donor
     if ((singlecolor_count == input.size()) && (singlecolor_nonfull_volume != -1)) {
       bottlepair.donor = singlecolor_nonfull_volume;
       bottlepair_color = input.get(singlecolor_nonfull_volume).get(0);

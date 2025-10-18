@@ -6,3 +6,6 @@ run:
 
 test:
     mvn test
+
+bubble:
+    mvn exec:java -Dexec.mainClass=com.lipkingm.Bubbles
