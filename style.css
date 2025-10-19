@@ -62,6 +62,18 @@ body {
   height: 100%;
 }
 
+.fileserv-form {
+  margin: auto auto auto auto;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.file-input {
+  padding: 30vh 30vw;
+  background-color: var(--color-background-finput);
+  border-radius: 20px;
+}
+
 .weather-container {
   margin: auto auto auto auto;
   display: grid;
@@ -119,16 +131,4 @@ body {
 .weather-label {
   border-top: 1px black dotted;
   text-align: center;
-}
-
-.fileserv-form {
-  margin: auto auto auto auto;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-}
-
-.file-input {
-  padding: 30vh 30vw;
-  background-color: var(--color-background-finput);
-  border-radius: 20px;
 }
