@@ -3,6 +3,7 @@ package com.lipkingm;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,15 +15,13 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.fluent.Content;
@@ -32,6 +31,7 @@ import org.apache.http.client.fluent.Response;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -261,7 +261,7 @@ public class App {
         }
     }
 
-    static void serveFile(OutputStream body_stream, String filename) throws IOException {
+    static String serveFile(OutputStream body_stream, String filename) {
         File file = new File(filename).getAbsoluteFile();
 
         System.out.println("The absolute path for the " + filename + " is " + file.toString());
@@ -273,7 +273,15 @@ public class App {
             while ((count = fs.read(buffer)) != -1) {
                 body_stream.write(buffer, 0, count);
             }
+        } catch (FileNotFoundException e) {
+            printError(e, "serveFile got the wrong file", "");
+            return "Wrong file";
+        } catch (IOException e) {
+            printError(e, "serveFile had internal error", "");
+            return "INTERNAL ERROR";
         }
+
+        return null;
     }
 
     static void handleJS(HttpExchange exchange) throws IOException {
@@ -324,7 +332,9 @@ public class App {
                 return;
             }
 
-            if (relative.chars().allMatch(value -> ('0' <= value && value <= '9') || ('a' <= value && value <= 'f'))) {
+            if (relative.chars().allMatch(value -> ('0' <= value && value <= '9') || ('a' <= value && value <= 'z')
+                    || value == '.' || value == '_')) {
+                System.out.println("All match");
                 handleFileservGetPage(exchange, relative);
                 return;
             }
@@ -359,10 +369,30 @@ public class App {
     }
 
     static void handleFileservGetPage(HttpExchange exchange, String file_hash) throws IOException {
-        exchange.sendResponseHeaders(200, 0);
+        System.out.println("Started to handleFileservGetPage");
 
-        try (OutputStream body_stream = exchange.getResponseBody()) {
+        Headers headers = exchange.getResponseHeaders();
+        Path path = Paths.get("userfiles", file_hash);
+        String content_type = Files.probeContentType(path);
+        System.out.println("Content-Type is '" + content_type + "'");
+        if (content_type == null) {
+            content_type = "application/octet-stream";
         }
+        headers.add("Content-Type", content_type);
+        long len = Files.size(path);
+        System.out.println("Length is " + len);
+
+        exchange.sendResponseHeaders(200, len);
+
+        OutputStream body_stream = exchange.getResponseBody();
+        System.out.println("Started serving file");
+        String serving_result = serveFile(body_stream, path.toString());
+        if (serving_result != null) {
+            body_stream.write(serving_result.getBytes());
+        }
+        System.out.println("Ended serving file");
+
+        body_stream.close();
 
         exchange.close();
     }
@@ -371,15 +401,36 @@ public class App {
         exchange.sendResponseHeaders(200, 0);
 
         byte[] body = new byte[500];
+        Headers headers = exchange.getRequestHeaders();
+        List<String> disposition = headers.get("Content-Disposition");
+        String ext = null;
+
+        if (disposition == null) {
+            ext = ".temp";
+        } else {
+            for (String elem : disposition) {
+                System.out.println("Dispositin is " + elem);
+                if (elem.split("=")[0].equals("filename")) {
+                    try {
+                        ext = "." + elem.split("\"")[1].split("\\.")[1];
+                    } catch (Exception e) {
+                        printError(e, "Splits were wrong", "");
+                        ext = ".temp";
+                    }
+                    break;
+                }
+            }
+        }
         InputStream req = exchange.getRequestBody();
 
-        File tempfile = File.createTempFile("temp_", ".temp").getAbsoluteFile();
+        File tempfile = File.createTempFile("temp_", ext).getAbsoluteFile();
 
         System.out.println("Created tempfile " + tempfile.toString());
 
         try (FileOutputStream out_stream = new FileOutputStream(tempfile)) {
-            while (req.read(body) != -1) {
-                out_stream.write(body);
+            int len = 0;
+            while ((len = req.read(body)) != -1) {
+                out_stream.write(body, 0, len);
             }
         }
 
