@@ -1,3 +1,11 @@
+# Screenshots
+
+## Weather
+![weather-view](./screenshots/weather.png)
+
+## Fileserv
+![fileserv](./screenshots/fileserv.png)
+
 # How to run any of the programs?
 
 ## Using just
