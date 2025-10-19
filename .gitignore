@@ -5,3 +5,4 @@ target
 userfiles/temp_*
 keys
 weather-temp.js
+weather-temp/*.js

@@ -84,20 +84,6 @@ public class App {
     static void handleWeather(HttpExchange exchange) throws IOException {
         System.out.println("Got Weather access");
 
-        URI uri = exchange.getRequestURI();
-        System.out.println("Got URI of " + uri.toString());
-        String[] params = uri.getQuery().split("&");
-        String city = null;
-
-        for (String part : params) {
-            String[] part_parts = part.split("=");
-            if (part_parts[0].equals("city")) {
-                city = part_parts[1];
-            }
-        }
-
-        System.out.println("City is " + city);
-
         System.out.println("Writing headers");
         exchange.sendResponseHeaders(200, 0);
         System.out.println("Writing body");
@@ -137,10 +123,6 @@ public class App {
                     / 1000 // ms -> sec
                     / 60 // sec -> min
             ;
-
-            if (diff > 15) {
-                System.out.println("HOW?!");
-            }
 
             latest = diff <= 15;
 
@@ -236,9 +218,10 @@ public class App {
 
         String result = getWeatherResult(city, jedis);
 
+        String tempfilename = "weather-temp/" + city + ".js";
         exchange.sendResponseHeaders(200, 0);
         InputStream js_stream = new FileInputStream("weather.js");
-        OutputStream js_temp = new FileOutputStream("weather-temp.js");
+        OutputStream js_temp = new FileOutputStream(tempfilename);
         byte[] buf = new byte[500];
         int count = 0;
 
@@ -255,7 +238,7 @@ public class App {
         js_temp.close();
 
         OutputStream body_stream = exchange.getResponseBody();
-        serveFile(body_stream, "weather-temp.js");
+        serveFile(body_stream, tempfilename);
         body_stream.close();
     }
 

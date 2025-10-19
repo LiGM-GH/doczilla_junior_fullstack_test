@@ -21,6 +21,7 @@ You can find out all of the subcommands by running `just --list` or just `just`.
 ## Using bash
 
 If you don't have just installed, then copy the lines from `justfile` in the respective paragraph
+and substitute variable names like `{{container_name}}` with desired values.
 
 # Bubbles
 
