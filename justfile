@@ -30,4 +30,7 @@ clean:
     mvn build-helper:remove-project-artifact
 
 bubble:
+    mvn dependency:resolve
+    mvn process-resources
+    mvn compile
     mvn exec:java -Dexec.mainClass=com.lipkingm.Bubbles
